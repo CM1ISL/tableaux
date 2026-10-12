@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Tableau de bord réseaux sociaux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&family=Cormorant+Garamond:wght@500&display=swap">
+<style>
+  :root {
+    --font-anthropic-sans: "Montserrat", system-ui, sans-serif;
+    --font-anthropic-serif: "Cormorant Garamond", Georgia, serif;
+    --color-bg: #FFFCF7; --color-panel: #FFFFFF; --color-fg: #2A1A19; --color-fg-muted: #6E5E5C; --color-border-line: #EADFD8;
+    --color-ok: #4F7A3A; --color-warn: #A35F12; --color-bad: #B44D25;
+    --cds-font-size-caption: .78rem; --cds-font-size-body: .95rem; --cds-font-size-heading: 1.1rem; --cds-font-size-title: 2.1rem; --cds-font-weight-medium: 500;
+    --cds-gap-xs: .25rem; --cds-gap-sm: .5rem; --cds-gap-md: 1rem; --cds-gap-lg: 1.75rem;
+    --cds-pad-xs: .25rem; --cds-pad-sm: .5rem; --cds-pad-md: .9rem; --cds-pad-lg: 1.25rem;
+    --cds-radius: 12px; --cds-dur-slow: .3s;
+    --cds-chart-grid: #EFE6E0; --cds-chart-axis: #CDBFB8;
+    color-scheme: light;
+  }
+  html, body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); }
+  body { padding-inline: 16px; padding-block: 24px; }
+  .dash-skeleton { background: var(--color-border-line); border-radius: var(--cds-radius); min-height: 8rem; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script>
+(function () {
+  const files = {abonnes: 'abonnes.csv', publications: 'publications.csv', strategie: 'strategie.csv'};
+  const calcs = {}, order = [], fns = [], store = {};
+  const P = {periode: 30, theme: 'clair'};
+  const parse = (text) => {
+    const lines = text.replace(/\r/g, '').trim().split('\n');
+    const split = (l) => { const c = []; let cur = '', q = false; for (const ch of l) { if (ch === '"') q = !q; else if (ch === ',' && !q) { c.push(cur); cur = ''; } else cur += ch; } c.push(cur); return c; };
+    const h = split(lines[0]);
+    return lines.slice(1).map((l) => { const c = split(l); return Object.fromEntries(h.map((k, i) => [k, c[i] ?? ''])); });
+  };
+  const run = () => fns.forEach((f) => { try { f(); } catch (e) { console.error(e); } });
+  window.dash = {
+    colors: ['#622220', '#B44D25', '#726933', '#B8C5D5'],
+    calc: (id, o) => { calcs[id] = o; order.push(id); },
+    data: (id) => store[id] || {status: 'loading', data: []},
+    params: () => ({...P}),
+    setParams: (o) => { Object.assign(P, o); run(); },
+    resetParams: () => {},
+    setLink: () => {},
+    refresh: () => {},
+    onData: (fn) => { fns.push(fn); try { fn(); } catch (e) { console.error(e); } },
+  };
+  window.addEventListener('DOMContentLoaded', async () => {
+    try {
+      for (const [id, f] of Object.entries(files)) {
+        const r = await fetch(f + '?v=' + Date.now());
+        if (!r.ok) throw new Error(f);
+        store[id] = {status: 'ok', data: parse(await r.text())};
+      }
+      for (const id of order) {
+        const o = calcs[id];
+        store[id] = {status: 'ok', data: o.fn(...o.inputs.map((i) => store[i].data))};
+      }
+    } catch (e) {
+      for (const id of [...Object.keys(files), ...order]) if (!store[id]) store[id] = {status: 'error', data: []};
+    }
+    run();
+  });
+})();
+</script>
+</head>
+<body>
+<style>
+  .cmi { --cmi-accent: #622220; --cmi-accent-soft: rgba(98,34,32,.10); --cmi-gold: #B44D25;
+    display: grid; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); max-width: 72rem; margin-inline: auto; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .cmi { --cmi-accent: #D6A8B2; --cmi-accent-soft: rgba(214,168,178,.16); --cmi-gold: #E39A72; } }
+  :root[data-theme="dark"] .cmi { --cmi-accent: #D6A8B2; --cmi-accent-soft: rgba(214,168,178,.16); --cmi-gold: #E39A72; }
+  .cmi-head { display: flex; flex-wrap: wrap; gap: var(--cds-gap-md); align-items: flex-end; justify-content: space-between; }
+  .cmi-brand { font-size: var(--cds-font-size-caption); letter-spacing: .08em; text-transform: uppercase; color: var(--cmi-accent); }
+  .cmi-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: var(--cds-gap-xs) 0 0; color: var(--color-fg); text-wrap: balance; }
+  .cmi-take { margin: var(--cds-gap-xs) 0 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-body); max-width: 60ch; }
+  .cmi-take b { color: var(--color-fg); font-weight: 600; }
+  .cmi-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: 999px; padding: 3px; gap: 2px; background: var(--color-panel); }
+  .cmi-seg button { font: inherit; font-size: var(--cds-font-size-caption); border: 0; background: transparent; color: var(--color-fg-muted); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+  .cmi-seg button[aria-pressed="true"] { background: var(--cmi-accent); color: var(--color-bg); }
+  .cmi-seg button:focus-visible { outline: 2px solid var(--cmi-accent); outline-offset: 2px; }
+  .cmi-sec h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0 0 var(--cds-gap-sm); color: var(--color-fg); }
+  .cmi-sec .cmi-note { margin: 0 0 var(--cds-gap-sm); color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+  .cmi-grid { display: grid; gap: var(--cds-gap-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+  .cmi-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-xs); align-content: start; min-height: 8.5rem; }
+  .cmi-card .lab { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); text-transform: uppercase; letter-spacing: .06em; }
+  .cmi-card .big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); color: var(--color-fg); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .cmi-card .sub { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+  .cmi-card .def { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .cmi-delta { font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .cmi-delta.up { color: var(--color-ok); } .cmi-delta.down { color: var(--color-bad); } .cmi-delta.flat { color: var(--color-fg-muted); font-weight: 400; }
+  .cmi-pill { display: inline-block; font-size: var(--cds-font-size-caption); padding: 2px 8px; border-radius: 999px; background: var(--cmi-accent-soft); color: var(--cmi-accent); max-width: 100%; white-space: normal; justify-self: start; }
+  .cmi-pill.warn { color: var(--color-warn); background: transparent; border: 1px solid var(--color-border-line); }
+  .cmi-goal { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: grid; gap: var(--cds-gap-sm); }
+  .cmi-goal .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--cds-gap-sm); align-items: baseline; }
+  .cmi-goal .big { font-family: var(--font-anthropic-serif); font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; color: var(--color-fg); }
+  .cmi-bar { height: 12px; border-radius: 999px; background: var(--cmi-accent-soft); overflow: hidden; }
+  .cmi-bar > i { display: block; height: 100%; width: 0; background: var(--cmi-accent); border-radius: 999px; }
+  .cmi-tablebox { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md) var(--cds-pad-lg); overflow-x: auto; }
+  .cmi-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); font-variant-numeric: tabular-nums; }
+  .cmi-table th { text-align: left; font-weight: 500; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); }
+  .cmi-table td { padding: var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); vertical-align: top; }
+  .cmi-table td.num, .cmi-table th.num { text-align: right; }
+  .cmi-table a { color: var(--cmi-accent); }
+  .cmi-chart { min-height: 4rem; }
+  .cmi-empty { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0; }
+  .cmi-foot { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); border-top: 1px solid var(--color-border-line); padding-top: var(--cds-pad-md); display: grid; gap: var(--cds-gap-xs); }
+  [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+  [data-dash-source-state=empty] { color: transparent; }
+  .cmi-ctrls { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); justify-content: flex-end; }
+  .cmi { --cmi-on-accent: var(--color-bg); }
+  .cmi-seg button[aria-pressed="true"] { color: var(--cmi-on-accent); }
+  .cmi.cmi[data-ambiance="fonce"], .cmi.cmi[data-ambiance="colore"] { padding: var(--cds-pad-lg); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); }
+  .cmi.cmi[data-ambiance="fonce"] { --color-bg: #2B0F0E; --color-panel: #622220; --color-fg: #FFFAEC; --color-fg-muted: rgba(255,250,236,.74); --color-border-line: rgba(255,230,181,.22);
+    --color-ok: #FFE6B5; --color-bad: #D6A8B2; --color-warn: #FFE6B5; --cmi-accent: #FFE6B5; --cmi-accent-soft: rgba(255,230,181,.18); --cmi-on-accent: #622220;
+    --cds-chart-grid: rgba(255,250,236,.12); --cds-chart-axis: rgba(255,250,236,.3); color-scheme: dark; }
+  .cmi.cmi[data-ambiance="colore"] { --color-bg: #FFFAEC; --color-panel: #FFFCF7; --color-fg: #622220; --color-fg-muted: rgba(98,34,32,.74); --color-border-line: rgba(98,34,32,.16);
+    --color-ok: #726933; --color-bad: #B44D25; --color-warn: #B44D25; --cmi-accent: #622220; --cmi-accent-soft: rgba(98,34,32,.12); --cmi-on-accent: #FFFAEC;
+    --cds-chart-grid: rgba(98,34,32,.1); --cds-chart-axis: rgba(98,34,32,.3); color-scheme: light; }
+  .cmi[data-ambiance="colore"] .cmi-card { border-color: transparent; }
+  .cmi[data-ambiance="colore"] #abonnes-grid .cmi-card:nth-child(3n+1) { background: #622220; }
+  .cmi[data-ambiance="colore"] #abonnes-grid .cmi-card:nth-child(3n+2) { background: #B44D25; }
+  .cmi[data-ambiance="colore"] #abonnes-grid .cmi-card:nth-child(3n+3) { background: #726933; }
+  .cmi[data-ambiance="colore"] #abonnes-grid .cmi-card { --color-fg: #FFFAEC; --color-fg-muted: rgba(255,250,236,.8); --color-ok: #FFE6B5; --color-bad: #FFE6B5; --color-warn: #FFE6B5; --cmi-accent: #FFE6B5; --cmi-accent-soft: rgba(255,250,236,.2); --color-border-line: rgba(255,250,236,.4); }
+  .cmi[data-ambiance="colore"] #ind-grid .cmi-card:nth-child(3n+1) { background: #D6A8B2; }
+  .cmi[data-ambiance="colore"] #ind-grid .cmi-card:nth-child(3n+2) { background: #B8C5D5; }
+  .cmi[data-ambiance="colore"] #ind-grid .cmi-card:nth-child(3n+3) { background: #FFE6B5; }
+  .cmi[data-ambiance="colore"] #ind-grid .cmi-card { --color-fg: #622220; --color-fg-muted: rgba(98,34,32,.8); --color-ok: #622220; --color-bad: #622220; --color-warn: #622220; }
+  .cmi[data-ambiance="colore"] .cmi-goal { background: #622220; border-color: transparent; --color-fg: #FFFAEC; --color-fg-muted: rgba(255,250,236,.8); --cmi-accent: #FFE6B5; --cmi-accent-soft: rgba(255,250,236,.22); }
+  .cmi-goal .sub, .cmi-goal .row { color: var(--color-fg-muted); }
+  .cmi-goal .cmi-pill { background: var(--cmi-accent-soft); color: var(--cmi-accent); }
+</style>
+
+<div class="cmi" id="cmi" data-ambiance="clair">
+  <header class="cmi-head" id="haut">
+    <div>
+      <div class="cmi-brand">Tableau de bord hebdomadaire</div>
+      <h1 class="cmi-title" id="titre">Réseaux sociaux</h1>
+      <p class="cmi-take" id="resume">—</p>
+    </div>
+    <div class="cmi-ctrls">
+      <div class="cmi-seg" id="seg-periode" role="group" aria-label="Période analysée">
+        <button type="button" data-p="7">7 jours</button>
+        <button type="button" data-p="15">15 jours</button>
+        <button type="button" data-p="30">1 mois</button>
+        <button type="button" data-p="90">3 mois</button>
+      </div>
+      <div class="cmi-seg" id="seg-theme" role="group" aria-label="Thème de couleurs">
+        <button type="button" data-t="clair">Thème clair</button>
+        <button type="button" data-t="fonce">Thème foncé</button>
+        <button type="button" data-t="colore">Thème coloré</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="cmi-sec" id="abonnes">
+    <h2>Abonnés</h2>
+    <p class="cmi-note" id="abonnes-note">Total au dernier relevé, et gain sur la période choisie.</p>
+    <div class="cmi-grid" id="abonnes-grid"></div>
+  </section>
+
+  <section class="cmi-sec" id="objectif">
+    <h2>Objectif de la stratégie</h2>
+    <div class="cmi-goal">
+      <div class="row">
+        <div><span class="big" data-source="objectif" data-field="actuel">—</span> <span class="sub">/ <span data-source="objectif" data-field="cible">—</span> abonnés <span data-source="objectif" data-field="plateforme">—</span></span></div>
+        <span class="cmi-pill" id="obj-pill">—</span>
+      </div>
+      <div class="cmi-bar" role="img" aria-label="Progression vers l'objectif"><i id="obj-bar"></i></div>
+      <div class="sub" id="obj-txt">—</div>
+    </div>
+  </section>
+
+  <section class="cmi-sec" id="indicateurs">
+    <h2 id="ind-title">Indicateurs de l'objectif</h2>
+    <p class="cmi-note" id="ind-note">—</p>
+    <div class="cmi-grid" id="ind-grid"></div>
+    <p class="cmi-note" style="margin-top: var(--cds-gap-sm)">Sur la période : <span data-source="indicateurs" data-field="publications">—</span> vidéos publiées, <span data-source="indicateurs" data-field="vues">—</span> vues au total.</p>
+  </section>
+
+  <section class="cmi-sec" id="top">
+    <h2>Top 3 des publications</h2>
+    <p class="cmi-note">Classées par nombre de vues, parmi les vidéos publiées pendant la période.</p>
+    <div class="cmi-tablebox">
+      <table class="cmi-table" id="top-table" data-source="top3" data-row-key="periode,id">
+        <thead><tr>
+          <th data-field="rang">#</th>
+          <th data-field="titre">Publication</th>
+          <th data-field="date">Date</th>
+          <th class="num" data-field="vues">Vues</th>
+          <th class="num" data-field="taux_likes">Likes / vues</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="cmi-empty" id="top-empty" hidden>Aucune publication sur cette période.</p>
+    </div>
+  </section>
+
+  <section class="cmi-sec" id="evolution">
+    <h2>Évolution des abonnés</h2>
+    <p class="cmi-note" id="evo-note">Un point par relevé du lundi.</p>
+    <div class="cmi-tablebox cmi-chart" id="evo-chart" data-source="abonnes"></div>
+  </section>
+
+  <footer class="cmi-foot">
+    <span id="foot-src">—</span>
+    <span>Les indicateurs comptent les publications parues pendant la période, avec leurs chiffres au jour du relevé. Facebook et Instagram ne rendent pas publics les partages ni les enregistrements.</span>
+  </footer>
+</div>
+
+<script>
+  const PERIODES = [7, 15, 30, 90];
+  // Table des indicateurs par objectif, version données publiques
+  const OBJECTIFS = {
+    notoriete: {titre: 'Se faire connaître', cles: [
+      ['vues', 'Vues', 'Nombre de vues des vidéos TikTok publiées sur la période.'],
+      ['abonnes_gagnes', 'Abonnés gagnés', 'Toutes plateformes, d’un relevé du lundi à l’autre.'],
+      ['partages', 'Partages', 'Personnes qui envoient la vidéo à quelqu’un. TikTok.']]},
+    communaute: {titre: 'Créer une communauté', cles: [
+      ['taux_engagement', 'Taux d’engagement', 'Part des vues qui donnent un like, un commentaire ou un partage. TikTok.'],
+      ['commentaires', 'Commentaires', 'Commentaires reçus sur les vidéos de la période. TikTok.'],
+      ['partages', 'Partages', 'Personnes qui envoient la vidéo à quelqu’un. TikTok.']]},
+    visites: {titre: 'Faire venir en magasin', cles: [
+      ['intention', 'Commentaires d’intention', 'Questions sur un prix, un stock ou l’adresse. TikTok.'],
+      ['enregistrements', 'Enregistrements', 'Personnes qui gardent la vidéo pour plus tard. TikTok.'],
+      ['partages', 'Partages', 'Personnes qui envoient la vidéo à quelqu’un. TikTok.']]},
+  };
+  const LIB = {7: '7 derniers jours', 15: '15 derniers jours', 30: '30 derniers jours', 90: '3 derniers mois'};
+  window.CMI_LIB = LIB;
+
+  dash.calc('abonnes_periode', {
+    title: 'Abonnés et gain par période',
+    description: 'Pour chaque plateforme : abonnés au dernier relevé, et gain depuis le relevé le plus récent datant d’au moins N jours.',
+    inputs: ['abonnes'],
+    fn: (abonnes) => {
+      const rows = abonnes.map((r) => ({...r, abonnes: Number(r.abonnes), t: Date.parse(r.date)}));
+      const asof = Math.max(...rows.map((r) => r.t));
+      const out = [];
+      for (const p of [...new Set(rows.map((r) => r.plateforme))]) {
+        const mine = rows.filter((r) => r.plateforme === p).sort((a, b) => a.t - b.t);
+        const last = mine[mine.length - 1];
+        for (const n of [7, 15, 30, 90]) {
+          const old = mine.filter((r) => r.t <= asof - n * 86400000).pop();
+          out.push({periode: n, plateforme: p, actuel: last.abonnes, variation: old ? last.abonnes - old.abonnes : null,
+            depuis: old ? old.date : null, premier_releve: mine[0].date, derniere_publication: last.derniere_publication || null,
+});
+        }
+      }
+      return out;
+    },
+  });
+
+  dash.calc('indicateurs', {
+    title: 'Indicateurs de la période',
+    description: 'Somme des chiffres des publications parues pendant la période, et pendant la période d’avant de même durée.',
+    inputs: ['publications', 'abonnes'],
+    fn: (publications, abonnes) => {
+      const asof = Math.max(...abonnes.map((r) => Date.parse(r.date)));
+      const day = 86400000;
+      const sum = (rows, k) => rows.reduce((s, r) => s + Number(r[k] || 0), 0);
+      return [7, 15, 30, 90].map((n) => {
+        const cur = publications.filter((r) => { const t = Date.parse(r.date); return t > asof - n * day && t <= asof; });
+        const prev = publications.filter((r) => { const t = Date.parse(r.date); return t > asof - 2 * n * day && t <= asof - n * day; });
+        const row = {periode: n, publications: cur.length, publications_avant: prev.length};
+        for (const k of ['vues', 'likes', 'commentaires', 'intention', 'enregistrements', 'partages']) { row[k] = sum(cur, k); row[k + '_avant'] = sum(prev, k); }
+        const eng = (L) => { const v = sum(L, 'vues'); return v ? (sum(L, 'likes') + sum(L, 'commentaires') + sum(L, 'partages')) / v : 0; };
+        row.taux_engagement = eng(cur); row.taux_engagement_avant = eng(prev);
+        const gain = (from, to) => {
+          let total = 0, ok = true;
+          for (const p of [...new Set(abonnes.map((r) => r.plateforme))]) {
+            const mine = abonnes.filter((r) => r.plateforme === p).map((r) => ({t: Date.parse(r.date), v: Number(r.abonnes)})).sort((a, b) => a.t - b.t);
+            const a = mine.filter((r) => r.t <= from).pop(), b = mine.filter((r) => r.t <= to).pop();
+            if (!a || !b) ok = false; else total += b.v - a.v;
+          }
+          return ok ? total : null;
+        };
+        row.abonnes_gagnes = gain(asof - n * day, asof); row.abonnes_gagnes_avant = gain(asof - 2 * n * day, asof - n * day);
+        return row;
+      });
+    },
+  });
+
+  dash.calc('top3', {
+    title: 'Top 3 des publications',
+    description: 'Les 3 publications les plus vues parmi celles parues pendant la période.',
+    inputs: ['publications', 'abonnes'],
+    fn: (publications, abonnes) => {
+      const asof = Math.max(...abonnes.map((r) => Date.parse(r.date)));
+      const out = [];
+      for (const n of [7, 15, 30, 90]) {
+        publications.filter((r) => { const t = Date.parse(r.date); return t > asof - n * 86400000 && t <= asof; })
+          .sort((a, b) => Number(b.vues) - Number(a.vues)).slice(0, 3)
+          .forEach((r, i) => out.push({periode: n, id: r.id, rang: i + 1, titre: r.titre, plateforme: r.plateforme, date: r.date,
+            vues: Number(r.vues), taux_likes: Number(r.vues) ? Number(r.likes) / Number(r.vues) : 0}));
+      }
+      return out;
+    },
+  });
+
+  dash.calc('objectif', {
+    title: 'Progression vers l’objectif',
+    description: 'Abonnés actuels de la plateforme visée, comparés au point de départ et à la cible fixés dans la stratégie.',
+    inputs: ['strategie', 'abonnes'],
+    fn: (strategie, abonnes) => {
+      const s = strategie[0];
+      const mine = abonnes.filter((r) => r.plateforme === s.plateforme_cible).sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+      const actuel = Number(mine[mine.length - 1].abonnes);
+      const depart = Number(s.abonnes_depart), cible = Number(s.abonnes_cible);
+      return [{plateforme: s.plateforme_cible, actuel, depart, cible, progression: Math.max(0, Math.min(1, (actuel - depart) / (cible - depart))),
+        reste: Math.max(0, cible - actuel), date_debut: s.date_debut, date_fin: s.date_fin, simule: s.simule, objectif: s.objectif_libelle}];
+    },
+  });
+
+  const nf = new Intl.NumberFormat('fr-FR');
+  const pf = new Intl.NumberFormat('fr-FR', {style: 'percent', maximumFractionDigits: 1});
+  const dfmt = (s) => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('fr-FR', {day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC'}) : '—';
+  const dshort = (s) => s ? new Date(s + 'T12:00:00Z').toLocaleDateString('fr-FR', {day: 'numeric', month: 'short', timeZone: 'UTC'}) : '—';
+  const setDefaults = () => { if (!dash.params().periode) dash.setParams({periode: 30}); };
+  setDefaults();
+
+  const seg = document.querySelectorAll('#seg-periode button');
+  const segT = document.querySelectorAll('#seg-theme button');
+  segT.forEach((b) => b.addEventListener('click', () => dash.setParams({theme: b.dataset.t})));
+  seg.forEach((b) => b.addEventListener('click', () => { dash.setParams({periode: Number(b.dataset.p)}); dash.setLink('p' + b.dataset.p); }));
+  const fromLink = location.hash.match(/^#p(7|15|30|90)$/);
+  if (fromLink) dash.setParams({periode: Number(fromLink[1])});
+
+  const delta = (el, cur, prev) => {
+    el.className = 'cmi-delta';
+    if (cur === prev) { el.classList.add('flat'); el.textContent = '= par rapport à la période précédente'; return; }
+    if (!prev) { el.classList.add('up'); el.textContent = '+' + nf.format(cur) + ' (aucun la période précédente)'; return; }
+    const pct = (cur - prev) / prev;
+    el.classList.add(cur > prev ? 'up' : 'down');
+    el.textContent = (cur > prev ? '↑ +' : '↓ ') + pf.format(pct) + ' par rapport à la période précédente (' + nf.format(prev) + ')';
+  };
+
+  dash.onData(() => {
+    const p = Number(dash.params().periode) || 30;
+    seg.forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.p) === p)));
+    const th = ['clair', 'fonce', 'colore'].includes(dash.params().theme) ? dash.params().theme : 'clair';
+    document.getElementById('cmi').setAttribute('data-ambiance', th);
+    segT.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.t === th)));
+    document.querySelectorAll('[data-source="indicateurs"]').forEach((el) => el.setAttribute('data-where', 'periode=' + p));
+
+    const ab = dash.data('abonnes_periode'), ind = dash.data('indicateurs'), top = dash.data('top3'), obj = dash.data('objectif'), raw = dash.data('abonnes');
+
+    // Valeurs simples marquées dans le HTML (indicateurs, objectif)
+    document.querySelectorAll('.cmi-goal [data-field], #indicateurs .cmi-note [data-field], #titre [data-field]').forEach((el) => {
+      const src = dash.data(el.dataset.source);
+      if (src.status !== 'ok') { el.textContent = '—'; return; }
+      const where = el.getAttribute('data-where');
+      const row = where ? src.data.find((r) => where.split('&').every((kv) => { const [k, v] = kv.split('='); return String(r[k]) === decodeURIComponent(v); })) : src.data[0];
+      const v = row ? row[el.dataset.field] : null;
+      el.textContent = v === null || v === undefined ? '—' : (typeof v === 'number' ? nf.format(v) : String(v));
+    });
+
+    // Abonnés
+    const grid = document.getElementById('abonnes-grid');
+    grid.replaceChildren();
+    if (ab.status === 'ok') {
+      const rows = ab.data.filter((r) => r.periode === p);
+      for (const r of rows) {
+        const c = document.createElement('div'); c.className = 'cmi-card'; c.id = 'ab-' + r.plateforme.toLowerCase();
+        const lab = document.createElement('span'); lab.className = 'lab'; lab.textContent = r.plateforme;
+        const big = document.createElement('span'); big.className = 'big';
+        big.dataset.source = 'abonnes_periode'; big.dataset.field = 'actuel';
+        big.setAttribute('data-where', 'periode=' + p + '&plateforme=' + encodeURIComponent(r.plateforme));
+        big.textContent = nf.format(r.actuel);
+        const d = document.createElement('span');
+        if (r.variation === null) { d.className = 'cmi-pill warn'; d.textContent = 'Historique en construction (1er relevé le ' + dshort(r.premier_releve) + ')'; }
+        else {
+          d.className = 'cmi-delta ' + (r.variation > 0 ? 'up' : r.variation < 0 ? 'down' : 'flat');
+          d.dataset.source = 'abonnes_periode'; d.dataset.field = 'variation';
+          d.setAttribute('data-where', 'periode=' + p + '&plateforme=' + encodeURIComponent(r.plateforme));
+          d.textContent = (r.variation > 0 ? '+' : '') + nf.format(r.variation) + ' sur les ' + LIB[p];
+        }
+        const sub = document.createElement('span'); sub.className = 'sub';
+        sub.textContent = r.derniere_publication ? 'Dernière publication : ' + dfmt(r.derniere_publication) : 'Dernière publication : non relevée';
+        c.append(lab, big, d, sub);
+        if (r.derniere_publication && (Date.parse(raw.data.map((x) => x.date).sort().pop()) - Date.parse(r.derniere_publication)) > 30 * 86400000) {
+          const w = document.createElement('span'); w.className = 'cmi-pill warn'; w.textContent = 'Compte en sommeil depuis plus d’un mois'; c.append(w);
+        }
+        grid.append(c);
+      }
+    } else {
+      const c = document.createElement('div'); c.className = 'cmi-card dash-skeleton'; grid.append(c);
+    }
+
+    // Objectif
+    if (obj.status === 'ok') {
+      const o = obj.data[0];
+      document.getElementById('obj-bar').style.width = (o.progression * 100).toFixed(1) + '%';
+      document.getElementById('obj-pill').textContent = pf.format(o.progression) + ' du chemin' + (o.simule === 'oui' ? ' · objectif fictif (test)' : '');
+      document.getElementById('obj-txt').textContent = 'Départ : ' + nf.format(o.depart) + ' abonnés le ' + dfmt(o.date_debut) + '. Cible : ' + nf.format(o.cible) + ' le ' + dfmt(o.date_fin) + '. Encore ' + nf.format(o.reste) + ' abonnés à gagner.';
+    }
+
+    // Indicateurs
+    document.getElementById('ind-note').textContent = LIB[p] + ', comparés aux ' + p + ' jours d’avant.';
+    const strat = dash.data('strategie');
+    const igrid = document.getElementById('ind-grid');
+    igrid.replaceChildren();
+    const objDef = strat.status === 'ok' ? OBJECTIFS[strat.data[0].objectif] : null;
+    if (objDef) document.getElementById('ind-title').textContent = 'Indicateurs de l’objectif « ' + objDef.titre + ' »';
+    if (ind.status === 'ok' && objDef) {
+      const r = ind.data.find((x) => x.periode === p);
+      for (const [k, lab, def] of objDef.cles) {
+        const c = document.createElement('div'); c.className = 'cmi-card'; c.id = 'k-' + k;
+        const l = document.createElement('span'); l.className = 'lab'; l.textContent = lab;
+        const b = document.createElement('span'); b.className = 'big';
+        b.dataset.source = 'indicateurs'; b.dataset.field = k; b.setAttribute('data-where', 'periode=' + p);
+        const v = r[k], prev = r[k + '_avant'];
+        const isRate = k === 'taux_engagement';
+        b.textContent = v === null ? '—' : (isRate ? pf.format(v) : nf.format(v));
+        const d = document.createElement('span');
+        if (v === null) { d.className = 'cmi-pill warn'; d.textContent = 'Historique en construction'; }
+        else if (isRate) { d.className = 'cmi-delta ' + (v > prev ? 'up' : v < prev ? 'down' : 'flat'); d.textContent = 'Période précédente : ' + pf.format(prev); }
+        else delta(d, v, prev);
+        const e = document.createElement('span'); e.className = 'def'; e.textContent = def;
+        c.append(l, b, d, e); igrid.append(c);
+      }
+    } else if (strat.status === 'ok' && !objDef) {
+      const m = document.createElement('p'); m.className = 'cmi-empty'; m.textContent = 'Objectif de la stratégie non reconnu : vérifier le fichier de stratégie.'; igrid.append(m);
+    }
+
+    // Top 3
+    const tbody = document.querySelector('#top-table tbody');
+    tbody.replaceChildren();
+    if (top.status === 'ok') {
+      const rows = top.data.filter((r) => r.periode === p);
+      document.getElementById('top-empty').hidden = rows.length > 0;
+      for (const r of rows) {
+        const tr = document.createElement('tr'); tr.dataset.key = r.periode + ',' + r.id;
+        const td = (t, cls) => { const x = document.createElement('td'); if (cls) x.className = cls; x.textContent = t; return x; };
+        tr.append(td(String(r.rang)), td(r.titre + ' (' + r.plateforme + ')'), td(dshort(r.date)), td(nf.format(r.vues), 'num'), td(pf.format(r.taux_likes), 'num'));
+        tbody.append(tr);
+      }
+    }
+
+    // Résumé
+    const res = document.getElementById('resume');
+    if (ind.status === 'ok' && ab.status === 'ok') {
+      const r = ind.data.find((x) => x.periode === p);
+      const sleepy = ab.data.filter((x) => x.periode === p && x.derniere_publication && (Date.parse(raw.data.map((y) => y.date).sort().pop()) - Date.parse(x.derniere_publication)) > 30 * 86400000).map((x) => x.plateforme);
+      res.replaceChildren();
+      const add = (t, b) => { const n = document.createElement(b ? 'b' : 'span'); n.textContent = t; res.append(n); return n; };
+      add('Sur les ' + LIB[p] + ' : ');
+      const v = add(nf.format(r.publications), true); v.dataset.source = 'indicateurs'; v.dataset.field = 'publications'; v.setAttribute('data-where', 'periode=' + p);
+      add(' vidéos TikTok');
+      if (objDef && r[objDef.cles[0][0]] !== null) {
+        const [k1, lab1] = objDef.cles[0];
+        add(' · ' + lab1.toLowerCase() + ' : ');
+        const q = add(k1 === 'taux_engagement' ? pf.format(r[k1]) : nf.format(r[k1]), true); q.dataset.source = 'indicateurs'; q.dataset.field = k1; q.setAttribute('data-where', 'periode=' + p);
+        add(' (période précédente : ' + (k1 === 'taux_engagement' ? pf.format(r[k1 + '_avant']) : nf.format(r[k1 + '_avant'])) + ').');
+      } else add('.');
+      if (sleepy.length) add(' ' + sleepy.join(' et ') + (sleepy.length > 1 ? ' ne publient' : ' ne publie') + ' plus depuis plus d’un mois.');
+    } else { res.textContent = '—'; }
+
+    // Évolution
+    const box = document.getElementById('evo-chart');
+    box.replaceChildren();
+    if (raw.status === 'ok') {
+      const rows = raw.data.map((r) => ({d: new Date(r.date + 'T12:00:00Z'), p: r.plateforme, v: Number(r.abonnes)}));
+      const dates = [...new Set(rows.map((r) => +r.d))];
+      document.getElementById('foot-src').textContent = 'Données publiques relevées le ' + dfmt(raw.data.map((r) => r.date).sort().pop()) + ' sur TikTok, Instagram et Facebook. Mise à jour chaque lundi à 0 h 01.';
+      if (dates.length < 2) {
+        const m = document.createElement('p'); m.className = 'cmi-empty';
+        m.textContent = 'Un seul relevé pour l’instant. La courbe apparaîtra dès le deuxième lundi, et la vue sur 3 mois sera complète après 13 relevés.';
+        box.append(m);
+      } else {
+        const W = box.clientWidth - 32, H = 180, m = {t: 10, r: 90, b: 24, l: 40};
+        const x = d3.scaleUtc(d3.extent(rows, (r) => r.d), [m.l, W - m.r]);
+        const y = d3.scaleLinear([0, d3.max(rows, (r) => r.v) * 1.1], [H - m.b, m.t]).nice();
+        const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+        svg.append('g').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(4).tickFormat(d3.utcFormat('%d/%m'))).attr('font-size', null).attr('font-family', null)
+          .call((g) => { g.selectAll('text').attr('fill', 'var(--color-fg-muted)'); g.selectAll('line,path').attr('stroke', 'var(--cds-chart-axis)'); });
+        svg.append('g').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(-(W - m.l - m.r))).attr('font-size', null).attr('font-family', null)
+          .call((g) => { g.select('.domain').remove(); g.selectAll('line').attr('stroke', 'var(--cds-chart-grid)'); g.selectAll('text').attr('fill', 'var(--color-fg-muted)'); });
+        d3.groups(rows, (r) => r.p).forEach(([p2, pts], i) => {
+          pts.sort((a, b) => a.d - b.d);
+          svg.append('path').datum(pts).attr('fill', 'none').attr('stroke', dash.colors[i]).attr('stroke-width', 2).attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round')
+            .attr('d', d3.line((r) => x(r.d), (r) => y(r.v)));
+          const lp = pts[pts.length - 1];
+          svg.append('text').attr('x', x(lp.d) + 6).attr('y', y(lp.v) + 4).attr('fill', 'var(--color-fg)').attr('font-size', 12).text(p2 + ' ' + nf.format(lp.v));
+        });
+      }
+    }
+  });
+</script>
+
+</body>
+</html>
